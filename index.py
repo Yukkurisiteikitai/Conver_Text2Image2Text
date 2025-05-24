@@ -136,58 +136,33 @@ def decode_image_data(
     return final_pixel_palette_indices
 
 # --- 以下はテスト用のコード ---
+# (decode_image_data と decode_huffman_stream_item は変更なし)
+
+# --- 以下はテスト用のコード (Test Case 2 のみ修正) ---
 if __name__ == '__main__':
-    # テスト用データ
-    char_to_bits_map_example = { # 3-bit encoding example
+    # Test Case 1: Basic Valid Data (変更なし)
+    char_to_bits_map_example_3bit = { 
         'A': "000", 'B': "001", 'C': "010", 'D': "011",
         'E': "100", 'F': "101", 'G': "110", 'H': "111"
     }
-
-    # ハフマン逆引きテーブル (ビット列 -> 値)
-    # 代表色ID (0 or 1)
     rep_color_huffman_rev_table_example = {"0": 0, "1": 1}
-    # 差分値 (-1, 0, or 1)
     diff_value_huffman_rev_table_example = {"00": 0, "01": 1, "10": -1}
-    # 連続回数 (1 or 2)
     count_huffman_rev_table_example = {"0": 1, "1": 2}
-
-    representative_palette_indices_example = [10, 100] # 代表色パレットインデックス
-    palette_size_example = 256 # パレットの総色数
-    image_width_example = 2
-    image_height_example = 2 # 合計4ピクセル
-
-    # エンコードされたデータの例 (手動で作成)
-    # 目標ピクセルデータ:
-    # 1. (rep_id=0, diff=1), count=1  -> パレットインデックス (10+1)%256 = 11
-    # 2. (rep_id=0, diff=0), count=2  -> パレットインデックス (10+0)%256 = 10 (2回)
-    # 3. (rep_id=1, diff=-1), count=1 -> パレットインデックス (100-1)%256 = 99
-    # 期待される最終パレットインデックスリスト: [11, 10, 10, 99]
-
-    # ハフマン符号化:
-    # ((0, 1), 1): rep(0)="0", diff(1)="01", count(1)="0"   => "0010"
-    # ((0, 0), 2): rep(0)="0", diff(0)="00", count(2)="1"   => "0001"
-    # ((1,-1), 1): rep(1)="1", diff(-1)="10", count(1)="0"  => "1100"
-    # 連結ビットストリーム: "001000011100" (12 bits)
-
-    # 文字列表現 (3bit/char):
-    # "001" -> 'B'
-    # "000" -> 'A'
-    # "011" -> 'D'
-    # "100" -> 'E'
-    encoded_string_example = "BADE"
-
+    representative_palette_indices_example = [10, 100]
+    palette_size_example = 256
+    
     print("--- Test Case 1: Basic Valid Data ---")
     try:
+        encoded_string_tc1 = "BADE" # 4 pixels: ((0,1),1), ((0,0),2), ((1,-1),1)
         pixel_indices = decode_image_data(
-            encoded_string_example,
-            char_to_bits_map_example,
+            encoded_string_tc1,
+            char_to_bits_map_example_3bit, # 3bit map
             rep_color_huffman_rev_table_example,
             diff_value_huffman_rev_table_example,
             count_huffman_rev_table_example,
             representative_palette_indices_example,
             palette_size_example,
-            image_width_example,
-            image_height_example
+            2, 2 # image_width, image_height (4 pixels)
         )
         print(f"Decoded pixel palette indices: {pixel_indices}")
         assert pixel_indices == [11, 10, 10, 99]
@@ -195,89 +170,80 @@ if __name__ == '__main__':
     except ValueError as e:
         print(f"Test Case 1 FAILED: {e}")
 
-    print("\n--- Test Case 2: Bit stream ends prematurely ---")
-    # "00100001110" (最後の '0' が欠落) -> "BAD" と "110" (G) -> "BADG"
-    # "0010000111" -> 11 bits, not divisible by 3 for char_to_bits_map_example
-    # RLEデータが3ピクセル分しかないケース (4ピクセル期待)
-    # ((0, 1), 1) -> "0010"
-    # ((0, 0), 1) -> "0000" (diff=0, count=1)
-    # ((1,-1), 1) -> "1100"
-    # Bitstream: "001000001100" => Encoded: "BACA"
-    encoded_string_short = "BACA" # Decodes to 3 pixels
+
+    print("\n--- Test Case 2: Bit stream ends prematurely (REVISED) ---")
+    # 2ビット/文字のマップを使用
+    char_to_bits_map_example_2bit = {'a': "00", 'b': "01", 'c': "10", 'd': "11"}
+    # データ: ((0,1),1) -> rep="0", diff="01", count="0" => ビット列 "0010"
+    # 文字列: "ac" ("00" + "10")
+    encoded_string_short_revised = "ac" 
     try:
         pixel_indices = decode_image_data(
-            encoded_string_short,
-            char_to_bits_map_example,
-            rep_color_huffman_rev_table_example,
+            encoded_string_short_revised, # 1 pixel worth of data ("0010")
+            char_to_bits_map_example_2bit, # 2bit map
+            rep_color_huffman_rev_table_example, # ハフマンテーブルは同じものを使用
             diff_value_huffman_rev_table_example,
-            count_huffman_rev_table_example, # count table needs "0":1
+            count_huffman_rev_table_example,
             representative_palette_indices_example,
             palette_size_example,
-            image_width_example, 
-            image_height_example # 4 pixels expected
+            2, 1 # image_width=2, image_height=1 (期待2ピクセル)
         )
         print(f"Decoded pixel palette indices (should fail): {pixel_indices}")
         print("Test Case 2 FAILED (error was expected but not raised).")
     except ValueError as e:
         print(f"Test Case 2 PASSED (expected error): {e}")
+        assert "Bit stream ended prematurely" in str(e)
+
 
     print("\n--- Test Case 3: Extra bits at the end (Warning expected) ---")
-    # "BADEA" -> "001000011100" + "000" (extra "A")
-    encoded_string_extra_bits = "BADEA"
     try:
+        encoded_string_tc3 = "BADEA" # 4 pixels data + "000"
         pixel_indices = decode_image_data(
-            encoded_string_extra_bits,
-            char_to_bits_map_example,
+            encoded_string_tc3,
+            char_to_bits_map_example_3bit, # 3bit map
             rep_color_huffman_rev_table_example,
             diff_value_huffman_rev_table_example,
             count_huffman_rev_table_example,
             representative_palette_indices_example,
             palette_size_example,
-            image_width_example,
-            image_height_example
+            2, 2 # image_width, image_height (4 pixels)
         )
         print(f"Decoded pixel palette indices: {pixel_indices}")
-        assert pixel_indices == [11, 10, 10, 99] # The core data should still be correct
+        assert pixel_indices == [11, 10, 10, 99]
         print("Test Case 3 PASSED (Warning for extra bits should have been printed).")
     except ValueError as e:
         print(f"Test Case 3 FAILED: {e}")
 
     print("\n--- Test Case 4: Invalid character in encoded string ---")
-    encoded_string_invalid_char = "BADX" # 'X' is not in char_to_bits_map
+    encoded_string_invalid_char = "BADX"
     try:
         pixel_indices = decode_image_data(
             encoded_string_invalid_char,
-            char_to_bits_map_example,
-            # ... other args
+            char_to_bits_map_example_3bit, # 3bit map
             rep_color_huffman_rev_table_example,
             diff_value_huffman_rev_table_example,
             count_huffman_rev_table_example,
             representative_palette_indices_example,
-            palette_size_example, image_width_example, image_height_example
+            palette_size_example, 2, 2
         )
         print("Test Case 4 FAILED (error was expected).")
     except ValueError as e:
         print(f"Test Case 4 PASSED (expected error for invalid char): {e}")
+        assert "Invalid character" in str(e)
 
     print("\n--- Test Case 5: Huffman code not found ---")
-    # "BADH" -> "001000011111"
-    # Decodes:
-    # ((0,1),1) -> "0010"
-    # ((0,0),2) -> "0001"
-    # Next: rep_id=1 ("1"), then tries to decode diff_value from "11" (from "111")
-    # "11" is not in diff_value_huffman_rev_table_example.
-    encoded_string_huffman_fail = "BADH"
+    encoded_string_huffman_fail = "BADH" # "001000011111"
     try:
         pixel_indices = decode_image_data(
             encoded_string_huffman_fail,
-            char_to_bits_map_example,
-            # ... other args
+            char_to_bits_map_example_3bit, # 3bit map
             rep_color_huffman_rev_table_example,
             diff_value_huffman_rev_table_example,
             count_huffman_rev_table_example,
             representative_palette_indices_example,
-            palette_size_example, image_width_example, image_height_example
+            palette_size_example, 2, 2
         )
         print("Test Case 5 FAILED (error was expected).")
     except ValueError as e:
         print(f"Test Case 5 PASSED (expected error for huffman fail): {e}")
+        assert "Huffman decode error" in str(e)
